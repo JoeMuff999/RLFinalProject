@@ -15,12 +15,21 @@ class PolicyNN(torch.nn.Module):
         self.hidden1 = (torch.nn.Linear(n_hidden, n_hidden))
         self.predict = torch.nn.Linear(n_hidden, n_output)   # output layer
 
+        # self.action_log_std = torch.nn.Parameter(torch.zeros(1, n_output))
+
+        
+
     def forward(self, input):
         layer_output = F.relu(self.hidden0(input))
         layer_output = F.relu(self.hidden1(layer_output))      # activation function for hidden layer
         actions = self.predict(layer_output)
+        # action_log_std = self.action_log_std.expand_as(actions)
+        # action_std = torch.exp(action_log_std)
         network_output = F.softmax(actions)    # linear output
-        return network_output
+        # print(actions)
+        # return network_output
+        return actions, action_log_std, action_std
+    
 
 class ValueNN(torch.nn.Module):
     def __init__(self, n_feature, n_layers, n_hidden : int, n_output):
