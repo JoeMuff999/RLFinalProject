@@ -15,7 +15,7 @@ input: initial policy parameters "theta" and initial value function "V". both wi
 
 for k = 0, 1, 2, ... num_trajs do
     
-    1. generate trajectories T_k using current policy pi(theta_k)...parameterized policy
+    1. generate trajectories T_k using current policy pi_theta_k...parameterized policy
     2. Estimate advantages of the trajectory using the current policy. will just use A(a,s) = reward_t + gamma * V(s_t+1) - V(s_t). **we will need to save the rewards we generate from trajectory**
     3. Form sample estimates for policy gradient g_k using advantage estimates
         3a. g_k = gradient_theta of L_theta_k (theta)
@@ -26,14 +26,14 @@ for k = 0, 1, 2, ... num_trajs do
         4c. output = H_k
     5. Use Conjugate Gradient to take the two estimates and compute the inverse H_k * g_k
         5a. We use n steps here, where n is the number of dimensions (I assume this is relative to the number of policy parameters)
-    6. We estimate the proposed step (delta_k)
-        6a. delta_k = sqrt((2*gamma)/transpose(x_k) * H_k * x_k) * x_k
+    6. We estimate the proposed step (DELTA_k)
+        6a. DELTA_k = sqrt((2*delta)/transpose(x_k) * H_k * x_k) * x_k
         6b. can do this with torch operations most likely
-    7. We then verify that this step delta_k is valid
+    7. We then verify that this step DELTA_k is valid
         7a. easy part. backtracking ine search until we find something that validates:
-        7b. KL-divergence(theta || theta_k) <= gamma
+        7b. KL-divergence(theta || theta_k) <= delta
         7c. L_theta_k (theta) >= 0
-        7d. result: theta_k+1 = theta_k + alpha^j * delta_k
+        7d. result: theta_k+1 = theta_k + alpha^j * DELTA_k
 
 end for :)
 
