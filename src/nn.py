@@ -43,7 +43,7 @@ class ValueNN(torch.nn.Module):
         network_output = self.predict(layer_output)    # linear output
         return network_output
 
-class CombinedNN(torch.nn.module):
+class CombinedNN(torch.nn.Module):
     def __init__(self, n_feature, n_layers, n_hidden : int, n_output : int):
         '''
         n_feature = number of inputs
@@ -51,10 +51,12 @@ class CombinedNN(torch.nn.module):
         n_layers = number of hidden layers
         n_output = number of outputs
         '''
-        super(PolicyNN, self).__init__()
+        super(CombinedNN, self).__init__()
         self.hidden0 = (torch.nn.Linear(n_feature, n_hidden))
         self.hidden1 = (torch.nn.Linear(n_hidden, n_hidden))
         self.predict = torch.nn.Linear(n_hidden, n_output)   # output layer
+        self.value = torch.nn.Linear(n_hidden, 1)   # output layer
+
         self.action_distribution = {}
 
     def forward(self, input) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -64,7 +66,8 @@ class CombinedNN(torch.nn.module):
         layer_output = F.relu(self.hidden0(input))
         layer_output = F.relu(self.hidden1(layer_output))      # activation function for hidden layer
         probs = Categorical(F.softmax(self.predict(layer_output)))
-        action = probs.sample()   # linear output
+        # print(F.softmax(self.predict(layer_output)))
+        value = self.value(layer_output).reshape(-1)
         # print(actions)
         # return network_output
         return probs, value
