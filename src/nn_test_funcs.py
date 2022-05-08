@@ -54,16 +54,4 @@ def test3():
         
     # print(pi(torch.tensor([2.0, 2.0])))
     
-
-def test2():
-    pi = PolicyNN()
-    def get_kl():
-        mean1, log_std1, std1 = PolicyNN([])
-
-        mean0 = mean1.data
-        # log_std0 = log_std1.data
-        # std0 = std1.data
-        kl = log_std1 - log_std0 + (std0.pow(2) + (mean0 - mean1).pow(2)) / (2.0 * std1.pow(2)) - 0.5
-        return kl.sum(1, keepdim=True)
-
 test3()
