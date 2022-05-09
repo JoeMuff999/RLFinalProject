@@ -43,7 +43,7 @@ class Logger:
         torch.save(model, self.folder_path + "/model.pth")
         f = open(total_rewards_file + str(hyperparams["num training cycles"]) + '.txt', "a")
         f.write(self.average_rewards().__str__() + "\n")
-        np.save('rewards.npy', np.array(self.rewards))
+        np.save(self.folder_path + '/rewards.npy', np.array(self.rewards))
 
 
 import numpy
