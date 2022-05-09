@@ -2,7 +2,7 @@ from reinforce_runner import reinforce_tests
 
 
 def main():
-    # reinforce_tests()
+    reinforce_tests()
 
     return
 

@@ -1,0 +1,9 @@
+Hyperparameters 
+lr : 0.01
+gamma : 0.99
+lmbda : 0.95
+epsilon : 0.2
+model_parameters : 1315
+num training cycles : 150
+num epochs : 3
+num trajectories : 15

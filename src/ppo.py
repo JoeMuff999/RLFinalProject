@@ -1,11 +1,53 @@
 import gym
 import torch
+import numpy as np
+import os
+import time
 from nn import ValueNN, PolicyNN, CombinedNN
 
 gym.make("CartPole-v1")
 
+total_rewards_file = '../data/total_rewards-'
+
+class Logger:
+
+    def __init__(self, num_traj, num_training):
+        self.trajectory_idx = 0
+        self.training_idx = 0
+        self.rewards = np.array([[0 for _ in range(num_traj)] for _ in range(num_training)])
+        self.folder_path = '../data/' + time.strftime("%Y%m%d-%H%M%S")
+
+    def add_trajectory_reward(self, reward):
+        self.rewards[self.training_idx, self.trajectory_idx] = reward
+        self.trajectory_idx += 1
+
+    def new_training(self):
+        self.training_idx += 1
+        self.trajectory_idx = 0
+    
+    def output_training_step(self):
+        print("all rewards " + str(self.rewards[self.training_idx]))
+        print("avg reward " + str(sum(self.rewards[self.training_idx])/len(self.rewards[self.training_idx])))
+
+    def average_rewards(self):
+        return [sum(x)/len(x) for x in self.rewards]
+
+    
+    def save(self, hyperparams : dict, model):
+        os.mkdir(self.folder_path)
+        f = open(self.folder_path + "/meta.txt", "w")
+        f.write('Hyperparameters \n')
+        for param in hyperparams:
+            f.write(param + " : " + str(hyperparams[param]) + "\n")
+        f.close()
+        torch.save(model, self.folder_path + "/model.pth")
+        f = open(total_rewards_file + str(hyperparams["num training cycles"]) + '.txt', "a")
+        f.write(self.average_rewards().__str__() + "\n")
+        np.save('rewards.npy', np.array(self.rewards))
+
+
 import numpy
-def generate_trajectory(env, model : CombinedNN, render_last_step: bool=True ):
+def generate_trajectory(env, model : CombinedNN, render_last_step: bool=True, logger : Logger = None,  ):
     episode = []
     s = env.reset()
     probs, value = model(torch.tensor(s))
@@ -22,8 +64,7 @@ def generate_trajectory(env, model : CombinedNN, render_last_step: bool=True ):
             if done and render_last_step:
                 env.render()
             tot_reward += r
-    
-    print(tot_reward)
+    logger.add_trajectory_reward(tot_reward)
     return episode
 
 from typing import List
@@ -44,11 +85,11 @@ def advantage_estimates(trajectory, gamma : float, lmbda, model):
 
 
 def calc_loss(trajectories, old_log_probs, adv_tensors, old_values, sampled_returns, epsilon : float, model : CombinedNN):
-    # assert len(trajectories) == len(adv_tensors)
 
     size_of_tensors = sum([len(traj) for traj in trajectories])
     new_log_probs = torch.zeros(size_of_tensors)
     new_values = torch.zeros(size_of_tensors)
+    entropies = torch.zeros(size_of_tensors)
 
     tensor_idx = 0
     for i, adv in enumerate(trajectories):
@@ -56,10 +97,12 @@ def calc_loss(trajectories, old_log_probs, adv_tensors, old_values, sampled_retu
             state = torch.tensor(trajectories[i][j][0])
             new_probs, new_value = model(state)
             new_log_probs[tensor_idx] = new_probs.log_prob(trajectories[i][j][1])
+            entropies[tensor_idx] = new_probs.entropy()
             new_values[tensor_idx] = (new_value)
             tensor_idx += 1
 
     norm_sampled_adv = (adv_tensors - adv_tensors.mean()) / (adv_tensors.std() + 1e-8)
+
 
 
     ratio = torch.exp(new_log_probs - old_log_probs)
@@ -67,119 +110,109 @@ def calc_loss(trajectories, old_log_probs, adv_tensors, old_values, sampled_retu
     policy_objective = torch.min(ratio * norm_sampled_adv, clipped_ratio * norm_sampled_adv)
     # print(policy_objective)
     policy_objective = policy_objective.mean()
-    # entropy_bonus = entropies.mean()
+    entropy_bonus = entropies.mean()
 
     # calculate value parameter delta
-
-    # convert values to tensors
-    # new_values = torch.tensor(new_values)
-    # old_values = torch.tensor(old_values)
-
     clipped_value = old_values + (new_values - old_values).clamp(min=-epsilon, max=epsilon)
     # print(new_values-old_values)
     value_loss = torch.max((new_values - sampled_returns) ** 2, (clipped_value - sampled_returns) ** 2)
     value_loss = .5 * value_loss.mean()
 
-    # cp_value = torch.tensor(value_loss)
-    # policy_objective =  -(policy_objective - 0.5 * value_loss)
-    # loss = -(policy_objective - 0.5 * value_loss + .01*entropy_bonus)
-    loss = -(policy_objective - 0.5 * value_loss)
+    loss = -(policy_objective - 0.5 * value_loss + .01*entropy_bonus)
+    # loss = -(policy_objective - 0.5 * value_loss)
 
     return loss
 
 def main():
 
     env = gym.make("CartPole-v1")
-    lr = 1e-4
-    N = 10
+    lr = 1e-2
     gamma = .99
     lmbda = .95
     epsilon = .2
 
-    # pi = PolicyNN(
-    #     env.observation_space.shape[0],
-    #     2,
-    #     32,
-    #     env.action_space.n
-    # )
-    # V = ValueNN(
-    #     env.observation_space.shape[0],
-    #     2,
-    #     32,
-    #     1
-    # )
+    NUM_TRAINING = 150
+    NUM_EPOCHS = 3
+    NUM_TRAJECTORIES = 15
     model = CombinedNN(
         env.observation_space.shape[0],
         2,
         32,
         env.action_space.n
     )
-    num_epochs = 10000
-    # policy_optim = torch.optim.Adam(pi.parameters(), lr=lr)
-    # value_optim = torch.optim.Adam(V.parameters(), lr=lr)
-    model_optim = torch.optim.Adam(model.parameters(), lr=lr)
-    for epoch_num in range(num_epochs):
+    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    hyperparams = {
+        "lr" : lr,
+        "gamma" : gamma,
+        "lmbda" : lmbda,
+        "epsilon" : epsilon,
+        "model_parameters" : num_params,
+        "num training cycles": NUM_TRAINING,
+        "num epochs": NUM_EPOCHS,
+        "num trajectories" : NUM_TRAJECTORIES
+    }
+
+
+    model.train()
+
+
+    logger = Logger(NUM_TRAJECTORIES, NUM_TRAINING)
+    model_optim = torch.optim.Adam(model.parameters(),  lr=lr)
+    for training_idx in range(NUM_TRAINING):
         trajectories = []
         advantages = []
         values = []
-        # pi.train()
-        # V.train()
-        for i in range(N):
-            traj = generate_trajectory(env, model, True)
+        for i in range(NUM_TRAJECTORIES):
+            traj = generate_trajectory(env, model, False, logger=logger)
             trajectories.append(traj)
             adv, vals = advantage_estimates(traj, gamma, lmbda, model)
             advantages.append(adv)
             values.append(vals)
 
         size_of_tensors = sum([len(traj) for traj in trajectories])
-        # entropies = torch.zeros(size_of_tensors)
         sampled_returns = torch.zeros(size_of_tensors)
         old_values = torch.zeros(size_of_tensors)
-        # adv_tensors = torch.zeros(size_of_tensors)
         adv_tensors = torch.empty(0)
-        # old_log_probs = torch.empty(0, requires_grad=True)
         old_log_probs = torch.zeros(size_of_tensors)
         tensor_idx = 0
-        for i, adv in enumerate(advantages):
-            for j, step in enumerate(adv):
-                with torch.no_grad():
-                    sampled_returns[tensor_idx]=(values[i][j] + adv[j]) 
-                    # print(old_log_probs)
-                    # print(trajectories[i][j][3])
-                    # old_log_probs = torch.cat((old_log_probs,trajectories[i][j][3]))
-                    old_log_probs[tensor_idx] = trajectories[i][j][3]
-                    # entropies[tensor_idx] = new_probs.entropy()
-                    old_values[tensor_idx] = (trajectories[i][j][4])
-                    tensor_idx += 1
+        # do not include the old policy/samples in the pytorch computational graph
+        # will prevent us from calling multiple backprops on the same training trajectories
+        with torch.no_grad():
+            for i, adv in enumerate(advantages):
+                for j, step in enumerate(adv):
+                
+                        sampled_returns[tensor_idx]=(values[i][j] + adv[j]) 
+                        old_log_probs[tensor_idx] = trajectories[i][j][3]
+                        old_values[tensor_idx] = (trajectories[i][j][4])
+                        tensor_idx += 1
 
-            adv_tensors = torch.cat((adv_tensors, adv))
+                adv_tensors = torch.cat((adv_tensors, adv))
 
-        for i in range(3):
+        for epoch_idx in range(NUM_EPOCHS):
             
             loss = calc_loss(trajectories, old_log_probs, adv_tensors, old_values, sampled_returns, epsilon, model)
-            # value_loss = value_loss ** 2
-            # policy_optim.zero_grad()
-            # value_optim.zero_grad()
             model_optim.zero_grad()
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
-            # for p 
-            # policy_reward.backward()
-            # x = policy_reward.grad_fn.next_functions
-            # while x:
-            #     print(x)
-            #     x = x[1][0].next_functions
-            # value_loss.backward()
-            # for p in model.parameters():
-            #     print(p)
 
-            # policy_optim.step()
-            # value_optim.step()
             model_optim.step()
-            # print(policy_reward)
-            print(loss)
-            # print("duh")
+            # print(loss)
+
+        # downgrade learning rate for more stability towards the end of training
+        # new_lr = lr * (((NUM_TRAINING - training_idx)/NUM_TRAINING) ** 2)
+        # print(new_lr)
+        # have to go into optimizer to modify learning rate
+        # for pg in model_optim.param_groups:
+            # pg['lr'] = new_lr
+        # downgrade clipping rate (epsilon)
+        # epsilon = .2 * ((NUM_TRAINING - training_idx)/NUM_TRAINING)
+        print(str(training_idx) + "/" + str(NUM_TRAINING))
+        logger.output_training_step()
+        logger.new_training()
+    
+    logger.save(hyperparams, model)
+
 
 
 if __name__ == "__main__":
