@@ -7,18 +7,20 @@ import time
 from reinforce import REINFORCE, Baseline, PiApproximationWithNN, VApproximationWithNN
 
 def reinforce_tests():
-    NUM_TIME_STEPS = 500000
-    # Test REINFORCE without baseline
-    wout_baseline_logger = {
-        "time_steps": NUM_TIME_STEPS,
-        "render": True, #last step
-        "frames": []
-    }
-    start = time.time()
-    rewards_no_B = run_reinforce(use_baseline=False, logger=wout_baseline_logger)
-    end = time.time()
-    print("no B " + str(end - start))
+    NUM_TIME_STEPS = 100000
+    print("testing REINFORCE without baseline")
+    # # Test REINFORCE without baseline
+    # wout_baseline_logger = {
+    #     "time_steps": NUM_TIME_STEPS,
+    #     "render": True, #last step
+    #     "frames": []
+    # }
+    # start = time.time()
+    # rewards_no_B = run_reinforce(use_baseline=False, logger=wout_baseline_logger)
+    # end = time.time()
+    # print("no B " + str(end - start))
     # Test REINFORCE with baseline
+    print("testing REINFORCE with baseline")
     with_baseline_logger = {
         "time_steps": NUM_TIME_STEPS,
         "render": True, # last step

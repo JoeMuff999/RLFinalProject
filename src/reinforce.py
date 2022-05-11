@@ -145,8 +145,8 @@ def REINFORCE(
     """
     rewards = [0.0 for i in range(num_time_steps)]
     time_step = 0
-    last_reward = 0.0
-
+    reached_max = False
+    already_saved_video = False
     while time_step < num_time_steps:
         Episode = []
         s = env.reset()
@@ -160,19 +160,22 @@ def REINFORCE(
             Episode.append((s, a, r, probs))
             s = s_p
             a, probs = pi(s_p)
-            if logger['render'] and last_reward >= 499.0:
+            if not already_saved_video and logger['render'] and reached_max:
                 frames.append(env.render(mode="rgb_array"))
             # if done:
                 # print(s_p)
                 # env.render()
             time_step += 1
             ep_reward += r
-        last_reward = ep_reward
         if ep_reward >= 499.0:
+            reached_max = True
+        if not already_saved_video and ep_reward >= 499.0 and len(frames) >= 499:
+            already_saved_video = True
             file = 'REINFORCE.gif'
             if isinstance(V, VApproximationWithNN):
                 file = 'REINFORCE-BASELINE.gif'
             save_frames_as_gif(frames, path='../data/videos/', filename=file)
+            print("SAVED VIDEO")
         
         for i in range(save_time_step, time_step):
             if i >= len(rewards):

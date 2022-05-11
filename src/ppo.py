@@ -13,11 +13,15 @@ from generate_gif import save_frames_as_gif
 
 class Logger:
 
-    def __init__(self, num_traj, num_time_steps):
+    def __init__(self, num_traj, num_time_steps, record_frames=False):
         self.time_step = 0
         self.rewards = np.array([0 for _ in range(num_time_steps)])
         self.folder_path = '../data/' + time.strftime("%Y%m%d-%H%M%S")
         self.tmp_rewards = []
+        self.should_record_frames = record_frames
+        self.frames = []
+        self.reached_max = False
+        self.already_recorded = False
 
     def add_trajectory_reward(self, reward, steps_elapsed):
         for i in range(self.time_step, self.time_step + steps_elapsed):
@@ -26,7 +30,13 @@ class Logger:
             self.rewards[i] = reward
         self.tmp_rewards.append(reward)
         self.time_step += steps_elapsed
+        if reward >= 499.0:
+            self.reached_max = True
     
+    def record_frames(self):
+        file = 'PPO.gif'
+        print("RECORDED FRAMES PPO")
+        save_frames_as_gif(self.frames, path='../data/videos/', filename=file)
 
     
     # def output_training_step(self):
@@ -63,6 +73,7 @@ def generate_trajectory(env, model : CombinedNN, render_last_step: bool=True, lo
     done = False
     tot_reward = 0
     time_steps = 0
+    frames = []
     while not done:
         with torch.no_grad():
             s_p, r, done, info = env.step(a.item())
@@ -70,10 +81,15 @@ def generate_trajectory(env, model : CombinedNN, render_last_step: bool=True, lo
             episode.append((s, a, r, probs.log_prob(a), value))
             s = s_p
             probs, value = model(torch.tensor(s_p))
+            if logger.reached_max and logger.should_record_frames and not logger.already_recorded:
+                frames.append(env.render(mode='rgb_array'))
             if done and render_last_step:
                 env.render()
             tot_reward += r
             time_steps += 1
+    if len(frames) >= 499 and tot_reward >= 499.0 and logger.should_record_frames and not logger.already_recorded:
+        logger.frames = frames
+        logger.record_frames()
     logger.add_trajectory_reward(tot_reward, time_steps)
     return episode
 
@@ -166,7 +182,7 @@ def main():
     model.train()
 
     start = time.time()
-    logger = Logger(NUM_TRAJECTORIES, NUM_TIME_STEPS)
+    logger = Logger(NUM_TRAJECTORIES, NUM_TIME_STEPS, record_frames=True)
     model_optim = torch.optim.Adam(model.parameters(),  lr=lr)
     time_step = 0
     while time_step < NUM_TIME_STEPS:
