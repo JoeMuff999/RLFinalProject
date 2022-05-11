@@ -3,34 +3,40 @@ import torch
 import numpy as np
 import os
 import time
+import sys
 from nn import ValueNN, PolicyNN, CombinedNN
 
 gym.make("CartPole-v1")
 
 total_rewards_file = '../data/total_rewards-'
+from generate_gif import save_frames_as_gif
 
 class Logger:
 
-    def __init__(self, num_traj, num_training):
-        self.trajectory_idx = 0
-        self.training_idx = 0
-        self.rewards = np.array([[0 for _ in range(num_traj)] for _ in range(num_training)])
+    def __init__(self, num_traj, num_time_steps):
+        self.time_step = 0
+        self.rewards = np.array([0 for _ in range(num_time_steps)])
         self.folder_path = '../data/' + time.strftime("%Y%m%d-%H%M%S")
+        self.tmp_rewards = []
 
-    def add_trajectory_reward(self, reward):
-        self.rewards[self.training_idx, self.trajectory_idx] = reward
-        self.trajectory_idx += 1
-
-    def new_training(self):
-        self.training_idx += 1
-        self.trajectory_idx = 0
+    def add_trajectory_reward(self, reward, steps_elapsed):
+        for i in range(self.time_step, self.time_step + steps_elapsed):
+            if i >= len(self.rewards):
+                break
+            self.rewards[i] = reward
+        self.tmp_rewards.append(reward)
+        self.time_step += steps_elapsed
     
-    def output_training_step(self):
-        print("all rewards " + str(self.rewards[self.training_idx]))
-        print("avg reward " + str(sum(self.rewards[self.training_idx])/len(self.rewards[self.training_idx])))
+
+    
+    # def output_training_step(self):
+        # print("all rewards " + str(self.rewards[self.training_idx]))
+        # print("avg reward " + str(sum(self.rewards[self.training_idx])/len(self.rewards[self.training_idx])))
 
     def average_rewards(self):
-        return [sum(x)/len(x) for x in self.rewards]
+        print(self.tmp_rewards)
+        print(sum(self.tmp_rewards)/len(self.tmp_rewards))
+        self.tmp_rewards = []
 
     
     def save(self, hyperparams : dict, model):
@@ -41,8 +47,10 @@ class Logger:
             f.write(param + " : " + str(hyperparams[param]) + "\n")
         f.close()
         torch.save(model, self.folder_path + "/model.pth")
-        f = open(total_rewards_file + str(hyperparams["num training cycles"]) + '.txt', "a")
-        f.write(self.average_rewards().__str__() + "\n")
+        f = open(total_rewards_file + str(hyperparams["num time steps"]) + '.txt', "a")
+        # np.savetxt(total_rewards_file + str(hyperparams["num time steps"]) + '.txt', self.rewards, delimiter =",")
+        np.set_printoptions(linewidth=np.inf, threshold=sys.maxsize)
+        f.write(str(self.rewards) + "\n")
         np.save(self.folder_path + '/rewards.npy', np.array(self.rewards))
 
 
@@ -54,6 +62,7 @@ def generate_trajectory(env, model : CombinedNN, render_last_step: bool=True, lo
     a = probs.sample()
     done = False
     tot_reward = 0
+    time_steps = 0
     while not done:
         with torch.no_grad():
             s_p, r, done, info = env.step(a.item())
@@ -64,7 +73,8 @@ def generate_trajectory(env, model : CombinedNN, render_last_step: bool=True, lo
             if done and render_last_step:
                 env.render()
             tot_reward += r
-    logger.add_trajectory_reward(tot_reward)
+            time_steps += 1
+    logger.add_trajectory_reward(tot_reward, time_steps)
     return episode
 
 from typing import List
@@ -122,16 +132,16 @@ def calc_loss(trajectories, old_log_probs, adv_tensors, old_values, sampled_retu
     # loss = -(policy_objective - 0.5 * value_loss)
 
     return loss
-
+import time
 def main():
 
     env = gym.make("CartPole-v1")
-    lr = 1e-2
+    lr = 1e-2 # .01
     gamma = .99
     lmbda = .95
     epsilon = .2
 
-    NUM_TRAINING = 150
+    NUM_TIME_STEPS = 500000
     NUM_EPOCHS = 3
     NUM_TRAJECTORIES = 15
     model = CombinedNN(
@@ -147,7 +157,7 @@ def main():
         "lmbda" : lmbda,
         "epsilon" : epsilon,
         "model_parameters" : num_params,
-        "num training cycles": NUM_TRAINING,
+        "num time steps": NUM_TIME_STEPS,
         "num epochs": NUM_EPOCHS,
         "num trajectories" : NUM_TRAJECTORIES
     }
@@ -155,10 +165,11 @@ def main():
 
     model.train()
 
-
-    logger = Logger(NUM_TRAJECTORIES, NUM_TRAINING)
+    start = time.time()
+    logger = Logger(NUM_TRAJECTORIES, NUM_TIME_STEPS)
     model_optim = torch.optim.Adam(model.parameters(),  lr=lr)
-    for training_idx in range(NUM_TRAINING):
+    time_step = 0
+    while time_step < NUM_TIME_STEPS:
         trajectories = []
         advantages = []
         values = []
@@ -207,11 +218,15 @@ def main():
             # pg['lr'] = new_lr
         # downgrade clipping rate (epsilon)
         # epsilon = .2 * ((NUM_TRAINING - training_idx)/NUM_TRAINING)
-        print(str(training_idx) + "/" + str(NUM_TRAINING))
-        logger.output_training_step()
-        logger.new_training()
+        print(str(time_step) + "/" + str(NUM_TIME_STEPS))
+        time_step = logger.time_step
+        # logger.output_training_step()
+        # logger.new_training()
+        logger.average_rewards()
     
     logger.save(hyperparams, model)
+    end = time.time()
+    print(end - start)
 
 
 

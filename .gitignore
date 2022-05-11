@@ -1,3 +1,5 @@
 myenv/
 RL_workspace.code-workspace
 .DS_Store
+spinningup/
+h5py/

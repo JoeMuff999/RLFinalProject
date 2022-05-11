@@ -22,7 +22,9 @@ class PiNN(torch.nn.Module):
         layer_output = F.relu(self.hidden1(layer_output))      # activation function for hidden layer
         actions = self.predict(layer_output)
         network_output = F.softmax(actions)    # linear output
-        return network_output
+        action_probs = Categorical(network_output)
+        action = action_probs.sample()
+        return action, action_probs
 
 class VNN(torch.nn.Module):
     def __init__(self, n_feature, n_layers, n_hidden : int, n_output):
@@ -50,22 +52,21 @@ class PiApproximationWithNN():
         """
         self.nn = PiNN(state_dims, 2, 32, num_actions)
         self.optimizer = torch.optim.Adam(self.nn.parameters(), betas=[.9, .999], lr=alpha)
-        self.probabilities = dict()
+        # self.probabilities = dict()
 
-    def get_action_prob(self, s, a):
-        self.nn.eval()
-        action_probs = self.nn(torch.from_numpy(s).float())
-        return action_probs[a]
+    # def get_action_prob(self, s, a):
+    #     self.nn.eval()
+    #     action_probs = self.nn(torch.from_numpy(s).float())
+    #     return action_probs[a]
 
     def __call__(self,s) -> int:
         self.nn.eval()
-        action_probs = self.nn(torch.from_numpy(s).float())
-        m = Categorical(action_probs)
-        action = (m.sample()).item()
-        self.probabilities[(tuple(s), action)] = torch.log(action_probs.squeeze(0)[action])
-        return action
+        action, action_probs = self.nn(torch.from_numpy(s).float())
+        torch.autograd.set_detect_anomaly(True)
+        # self.probabilities[(tuple(s), action)] = torch.log(action_probs.squeeze(0)[action])
+        return action, action_probs
 
-    def update(self, s, a, gamma_t, delta):
+    def update(self, s, a, gamma_t, delta, probs):
         """
         s: state S_t
         a: action A_t
@@ -73,7 +74,8 @@ class PiApproximationWithNN():
         delta: G-v(S_t,w)
         """
         self.nn.train()
-        loss = torch.tensor(gamma_t) * torch.tensor(delta) * -1*copy.copy(self.probabilities[(tuple(s), a)])
+        _, probs = self.nn(torch.from_numpy(s).float())
+        loss = torch.tensor(gamma_t) * torch.tensor(delta) * -1 * probs.log_prob(a)
         self.optimizer.zero_grad()
         torch.autograd.set_detect_anomaly(True)
         loss.backward()
@@ -115,19 +117,20 @@ class VApproximationWithNN(Baseline):
     def update(self,s,G):
         self.nn.train()
         self.optimizer.zero_grad()
-        prediction = self.nn(torch.from_numpy(s).float())
+        prediction = self.nn(torch.from_numpy(s).float()) # input: state, output : scalar
         loss_function = torch.nn.MSELoss()
-
         loss = loss_function(prediction, torch.tensor([G]))
-        loss.backward()
+        # loss = G - prediction
+        loss.backward() # computes the gradients of the network parameters with respect to the loss
         self.optimizer.step()
 
+from generate_gif import save_frames_as_gif
 def REINFORCE(
     env, #open-ai environment
     gamma:float,
-    num_episodes:int,
+    num_time_steps:int,
     pi:PiApproximationWithNN,
-    V:Baseline) -> Iterable[float]:
+    V:Baseline, logger) -> Iterable[float]:
     """
     implement REINFORCE algorithm with and without baseline.
 
@@ -140,36 +143,56 @@ def REINFORCE(
     output:
         a list that includes the G_0 for every episodes.
     """
-    to_return = []
-    for ep_num in range(num_episodes):
+    rewards = [0.0 for i in range(num_time_steps)]
+    time_step = 0
+    last_reward = 0.0
+
+    while time_step < num_time_steps:
         Episode = []
         s = env.reset()
-        a = pi(s)
+        a, probs = pi(s)
         done = False
-        
+        save_time_step = time_step
+        ep_reward = 0.0
+        frames = []
         while not done:
-            s_p, r, done, info = env.step(a)
-            Episode.append((s, a, r))
+            s_p, r, done, info = env.step(a.item())
+            Episode.append((s, a, r, probs))
             s = s_p
-            a = pi(s_p)
+            a, probs = pi(s_p)
+            if logger['render'] and last_reward >= 499.0:
+                frames.append(env.render(mode="rgb_array"))
             # if done:
                 # print(s_p)
                 # env.render()
+            time_step += 1
+            ep_reward += r
+        last_reward = ep_reward
+        if ep_reward >= 499.0:
+            file = 'REINFORCE.gif'
+            if isinstance(V, VApproximationWithNN):
+                file = 'REINFORCE-BASELINE.gif'
+            save_frames_as_gif(frames, path='../data/videos/', filename=file)
+        
+        for i in range(save_time_step, time_step):
+            if i >= len(rewards):
+                break
+            rewards[i] = ep_reward
 
         T = len(Episode)
         for t, step in enumerate(Episode):
-            s, a, r = step 
+            s, a, r, probs = step 
             G = sum([pow(gamma, idx)*Episode[idx][2] for idx in range(t, T)])
-            if t == 0:
-                to_return.append(G)
+            # if t == 0:
+            #     to_return.append(G)
             # print("state : " + str(s))
             delta = G - V(s)
             # print(delta)
             V.update(s, G)
-            pi.update(s, a, pow(gamma, t), delta)
+            pi.update(s, a, pow(gamma, t), delta, probs)
         
-        print("ep_num " + str(ep_num))
-    return to_return
+        # print("time steps " + str(time_step))
+    return rewards
 
     
 

@@ -2,37 +2,51 @@ from email.mime import base
 import numpy as np
 from matplotlib import pyplot as plt
 import gym 
+import sys
+import time
 from reinforce import REINFORCE, Baseline, PiApproximationWithNN, VApproximationWithNN
 
 def reinforce_tests():
-    num_iter = 5
-
+    NUM_TIME_STEPS = 500000
     # Test REINFORCE without baseline
-    without_baseline = []
-    for _ in range(num_iter):
-        training_progress = run_reinforce(use_baseline=False)
-        without_baseline.append(training_progress)
-    without_baseline = np.mean(without_baseline,axis=0)
-
+    wout_baseline_logger = {
+        "time_steps": NUM_TIME_STEPS,
+        "render": True, #last step
+        "frames": []
+    }
+    start = time.time()
+    rewards_no_B = run_reinforce(use_baseline=False, logger=wout_baseline_logger)
+    end = time.time()
+    print("no B " + str(end - start))
     # Test REINFORCE with baseline
-    with_baseline = []
-    for _ in range(num_iter):
-        training_progress = run_reinforce(use_baseline=True)
-        with_baseline.append(training_progress)
-    with_baseline = np.mean(with_baseline,axis=0)
+    with_baseline_logger = {
+        "time_steps": NUM_TIME_STEPS,
+        "render": True, # last step
+        "frames": []
+    }
+    start = time.time()
+    rewards_with_B = run_reinforce(use_baseline=True, logger=with_baseline_logger)
+    end = time.time()
 
-    # Plot the experiment result
-    fig,ax = plt.subplots()
-    ax.plot(np.arange(len(without_baseline)),without_baseline, label='without baseline')
-    ax.plot(np.arange(len(with_baseline)),with_baseline, label='with baseline')
+    print("w B " + str(end - start))
+    
+    total_rewards_file_withB = '../data/total_rewards_RWB-'
+    total_rewards_file_withoutB = '../data/total_rewards_RNOB-'
 
-    ax.set_xlabel('iteration')
-    ax.set_ylabel('G_0')
-    ax.legend()
 
-    plt.show()
 
-def run_reinforce(use_baseline, gym_env_string : str = "CartPole-v1"):
+    f = open(total_rewards_file_withoutB + str(NUM_TIME_STEPS) + '.txt', "a")
+    np.set_printoptions(linewidth=np.inf, threshold=sys.maxsize)
+    f.write(str(rewards_no_B) + "\n")
+    f.close()
+
+    f = open(total_rewards_file_withB + str(NUM_TIME_STEPS) + '.txt', "a")
+    np.set_printoptions(linewidth=np.inf, threshold=sys.maxsize)
+    f.write(str(rewards_with_B) + "\n")
+    f.close()
+    
+
+def run_reinforce(use_baseline, logger, gym_env_string : str = "CartPole-v1"):
     env = gym.make(gym_env_string)
     gamma = 1.
     alpha = 3e-4
@@ -45,7 +59,9 @@ def run_reinforce(use_baseline, gym_env_string : str = "CartPole-v1"):
         baseline = VApproximationWithNN(
             env.observation_space.shape[0],
             alpha)
+        # print(sum(p.numel() for p in baseline.nn.parameters() if p.requires_grad))
     else:
         baseline = Baseline(0.)
+    # print(sum(p.numel() for p in pi.nn.parameters() if p.requires_grad))
 
-    return REINFORCE(env,gamma,100,pi,baseline)
+    return REINFORCE(env,gamma,logger['time_steps'],pi,baseline, logger)
