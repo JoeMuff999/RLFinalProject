@@ -53,3 +53,11 @@ The code we used for generating graphs can be found in src/graph_lib.py
 To reproduce the graph found in our report, simply run the following:
 
 python3 ./src/graph_lib.py
+
+### Comparison plot of tested policy gradient methods
+
+![](data/figures/combined_plot.png)
+
+### Example max reward run on CartPole using PPO trained model
+
+![Max reward run using PPO](data/videos/PPO.gif)
