@@ -14,10 +14,10 @@ class Policy(nn.Module):
         self.action_mean.bias.data.mul_(0.0)
 
         self.action_log_std = nn.Parameter(torch.zeros(1, num_outputs))
-
         self.saved_actions = []
         self.rewards = []
         self.final_value = 0
+        
 
     def forward(self, x):
         x = torch.tanh(self.affine1(x))

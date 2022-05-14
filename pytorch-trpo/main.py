@@ -50,8 +50,16 @@ num_actions = env.action_space.n
 # env.seed(args.seed)
 # torch.manual_seed(args.seed)
 
-policy_net = Policy(num_inputs, num_actions)
-value_net = Value(num_inputs)
+# policy_net = Policy(num_inputs, num_actions)
+# model_parameters = filter(lambda p: p.requires_grad, policy_net.parameters())
+# params = sum([np.prod(p.size()) for p in model_parameters])
+# print(params)
+
+# value_net = Value(num_inputs)
+# model_parameters = filter(lambda p: p.requires_grad, value_net.parameters())
+# params = sum([np.prod(p.size()) for p in model_parameters])
+# print(params)
+
 
 def select_action(state):
     state = torch.from_numpy(state).unsqueeze(0)
@@ -138,7 +146,14 @@ i_episode = 1
 total_time_steps = 0
 rewards = [0.0 for i in range(args.training_steps)]
 
+
+import sys
+  
+sys.path.insert(0, '../src')
+sys.path.insert(0, './src')
+
 import time
+from generate_gif import save_frames_as_gif
 start = time.time()
 while total_time_steps < args.training_steps:
     memory = Memory()
@@ -146,6 +161,7 @@ while total_time_steps < args.training_steps:
     num_steps = 0
     reward_batch = 0
     num_episodes = 0
+    already_recorded_frames = True
     while num_steps < args.batch_size:
         state = env.reset()
         state = running_state(state)
@@ -154,10 +170,14 @@ while total_time_steps < args.training_steps:
         done = False
         t = 0
         num_traj_steps = 0
+        frames = []
         while not done: # Don't infinite loop while learning
             action = select_action(state)
             action = action.data[0].numpy()
             next_state, reward, done, _ = env.step(np.argmax(action))
+            
+            if not already_recorded_frames:
+                frames.append(env.render(mode='rgb_array'))
             reward_sum += reward
 
             next_state = running_state(next_state)
@@ -177,6 +197,10 @@ while total_time_steps < args.training_steps:
             t += 1
         num_steps += (t-1)
         num_episodes += 1
+        if not already_recorded_frames and len(frames) >= 500:
+            save_frames_as_gif(frames, path='../data/videos/', filename='TRPO.gif')
+            already_recorded_frames = True
+            print("RECORDED TRPO")
         for i in range(total_time_steps, total_time_steps + t):
             if i >= len(rewards):
                 break

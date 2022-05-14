@@ -16,7 +16,7 @@ class Logger:
     def __init__(self, num_traj, num_time_steps, record_frames=False):
         self.time_step = 0
         self.rewards = np.array([0 for _ in range(num_time_steps)])
-        self.folder_path = '../data/' + time.strftime("%Y%m%d-%H%M%S")
+        self.folder_path = '../data/PPO_runs/' + time.strftime("%Y%m%d-%H%M%S")
         self.tmp_rewards = []
         self.should_record_frames = record_frames
         self.frames = []
