@@ -17,7 +17,6 @@ class Policy(nn.Module):
         self.saved_actions = []
         self.rewards = []
         self.final_value = 0
-        
 
     def forward(self, x):
         x = torch.tanh(self.affine1(x))

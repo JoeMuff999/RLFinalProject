@@ -50,15 +50,15 @@ num_actions = env.action_space.n
 # env.seed(args.seed)
 # torch.manual_seed(args.seed)
 
-# policy_net = Policy(num_inputs, num_actions)
-# model_parameters = filter(lambda p: p.requires_grad, policy_net.parameters())
-# params = sum([np.prod(p.size()) for p in model_parameters])
-# print(params)
+policy_net = Policy(num_inputs, num_actions)
+model_parameters = filter(lambda p: p.requires_grad, policy_net.parameters())
+params = sum([np.prod(p.size()) for p in model_parameters])
+print(params)
 
-# value_net = Value(num_inputs)
-# model_parameters = filter(lambda p: p.requires_grad, value_net.parameters())
-# params = sum([np.prod(p.size()) for p in model_parameters])
-# print(params)
+value_net = Value(num_inputs)
+model_parameters = filter(lambda p: p.requires_grad, value_net.parameters())
+params = sum([np.prod(p.size()) for p in model_parameters])
+print(params)
 
 
 def select_action(state):
